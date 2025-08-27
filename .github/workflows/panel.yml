@@ -1,66 +1,46 @@
-name: Teryx Panel VPS
+name: Teryx Panel + Auto Backup + SSH
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # every 6 hours auto restart
+    - cron: "0 */6 * * *"  # every 6 hours
 
 jobs:
-  build:
+  teryx-panel:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.FILEBASE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.FILEBASE_SECRET }}
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-      - name: Setup Environment
+      - name: Install Dependencies
         run: |
-          sudo apt-get update
-          curl -sL https://deb.nodesource.com/setup_23.x | sudo bash -
-          sudo apt-get install -y nodejs git unzip zip pm2 awscli tmate
+          sudo apt update
+          sudo apt install -y nodejs git unzip zip pm2 tmate curl
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
 
-      - name: Configure Filebase
+      - name: Clone Teryx Panel
         run: |
-          aws configure set aws_access_key_id ${{ secrets.FILEBASE_ACCESS_KEY }}
-          aws configure set aws_secret_access_key ${{ secrets.FILEBASE_SECRET_KEY }}
-          aws configure set default.region us-east-1
-          echo "✅ Filebase configured"
+          git clone https://github.com/teryxlabs/v4panel
+          cd v4panel
+          npm install
+          npm run seed
+          npm run createUser  # default user: admin@gmail.com / admin123
 
-      - name: Restore Backup if Exists
+      - name: Start Teryx Panel with pm2
         run: |
-          mkdir -p ~/teryx
-          cd ~/teryx
-          aws s3 cp s3://${{ secrets.FILEBASE_BUCKET }}/teryx-backup.zip ./teryx-backup.zip || true
-          if [ -f "teryx-backup.zip" ]; then
-            unzip -o teryx-backup.zip
-            echo "✅ Backup restored"
-          else
-            git clone https://github.com/teryxlabs/v4panel panel
-            cd panel
-            npm install
-            npm run seed
-            echo "admin@gmail.com" | npm run createUser
-          fi
-
-      - name: Start Panel
-        run: |
-          cd ~/teryx/panel
-          pm2 start index.js --name teryx-panel
+          cd v4panel
+          pm2 start npm --name teryx-panel -- run start
           pm2 save
-          echo "✅ Teryx Panel started"
 
-      - name: Start SSH with tmate
+      - name: Start tmate SSH + Auto Backup Loop
         run: |
-          echo "🔑 Starting tmate session..."
-          tmate -F &
-          sleep 20
-          tmate show-messages || true
-
-      - name: Start Auto-Backup Loop (after SSH)
-        run: |
-          while true; do
-            cd ~/teryx
-            zip -r teryx-backup.zip panel
-            aws s3 cp teryx-backup.zip s3://${{ secrets.FILEBASE_BUCKET }}/teryx-backup.zip
-            echo "✅ Backup uploaded"
-            sleep 1800   # every 30 mins
-          done &
+          bash .github/scripts/ssh_backup_loop.sh

@@ -1,0 +1,66 @@
+name: Teryx Panel VPS
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours auto restart
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Environment
+        run: |
+          sudo apt-get update
+          curl -sL https://deb.nodesource.com/setup_23.x | sudo bash -
+          sudo apt-get install -y nodejs git unzip zip pm2 awscli tmate
+
+      - name: Configure Filebase
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.FILEBASE_ACCESS_KEY }}
+          aws configure set aws_secret_access_key ${{ secrets.FILEBASE_SECRET_KEY }}
+          aws configure set default.region us-east-1
+          echo "✅ Filebase configured"
+
+      - name: Restore Backup if Exists
+        run: |
+          mkdir -p ~/teryx
+          cd ~/teryx
+          aws s3 cp s3://${{ secrets.FILEBASE_BUCKET }}/teryx-backup.zip ./teryx-backup.zip || true
+          if [ -f "teryx-backup.zip" ]; then
+            unzip -o teryx-backup.zip
+            echo "✅ Backup restored"
+          else
+            git clone https://github.com/teryxlabs/v4panel panel
+            cd panel
+            npm install
+            npm run seed
+            echo "admin@gmail.com" | npm run createUser
+          fi
+
+      - name: Start Panel
+        run: |
+          cd ~/teryx/panel
+          pm2 start index.js --name teryx-panel
+          pm2 save
+          echo "✅ Teryx Panel started"
+
+      - name: Start SSH with tmate
+        run: |
+          echo "🔑 Starting tmate session..."
+          tmate -F &
+          sleep 20
+          tmate show-messages || true
+
+      - name: Start Auto-Backup Loop (after SSH)
+        run: |
+          while true; do
+            cd ~/teryx
+            zip -r teryx-backup.zip panel
+            aws s3 cp teryx-backup.zip s3://${{ secrets.FILEBASE_BUCKET }}/teryx-backup.zip
+            echo "✅ Backup uploaded"
+            sleep 1800   # every 30 mins
+          done &

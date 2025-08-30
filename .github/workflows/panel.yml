@@ -26,7 +26,6 @@ jobs:
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
           sudo ./aws/install --update
-          sudo npm install -g pm2
 
       - name: Set SSH password  
         run: |  
@@ -36,20 +35,11 @@ jobs:
         run: |  
           mkdir -p v4panel
           cd v4panel
-          aws --endpoint-url=https://s3.filebase.com s3 cp s3://$FILEBASE_BUCKET/panelbackup.zip panelbackup.zip || echo "No backup found"
-          unzip -o panelbackup.zip || echo "No panel backup found"
-
-      - name: Start v4panel with PM2  
-        run: |  
-          cd v4panel
-          # Detect main file (index.js, server.js, or app.js)
-          ENTRY_FILE=$(ls index.js 2>/dev/null || ls server.js 2>/dev/null || ls app.js 2>/dev/null)
-          if [ -z "$ENTRY_FILE" ]; then
-            echo "Error: No entry file found (index.js/server.js/app.js)"
-            exit 1
+          if aws --endpoint-url=https://s3.filebase.com s3 cp s3://$FILEBASE_BUCKET/panelbackup.zip panelbackup.zip; then
+            unzip -o panelbackup.zip || echo "No panel backup found"
+          else
+            echo "No panel backup found, panel folder will be empty"
           fi
-          pm2 start "$ENTRY_FILE" --name "v4panel" || pm2 restart v4panel
-          pm2 save
 
       - name: Start Playit + SSH + 30-min Backup Loop  
         run: |  

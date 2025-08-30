@@ -1,43 +1,51 @@
-name: V4 Panel with tmate SSH
+name: V4 Panel with Auto Backup + SSH
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"   # every 6 hours
   workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"  # Every 6 hours
 
 jobs:
   panel:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
 
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+    env:  
+      FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}  
+      FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}  
+      FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}  
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        curl -sL https://deb.nodesource.com/setup_23.x | sudo bash -
-        sudo apt install -y nodejs git zip unzip tmate
+    steps:  
+      - name: Checkout Repo  
+        uses: actions/checkout@v4  
 
-    - name: Clone V4 Panel
-      run: |
-        git clone https://github.com/teryxlabs/v4panel
-        cd v4panel
-        unzip panel.zip || true
-        npm install
-        npm run seed
+      - name: Install Dependencies  
+        run: |  
+          sudo apt update  
+          sudo apt install -y nodejs npm tmate unzip curl zip git  
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"  
+          unzip awscliv2.zip  
+          sudo ./aws/install --update  
+          sudo npm install -g pm2
 
-    - name: Start Panel
-      run: |
-        cd v4panel
-        nohup node . > panel.log 2>&1 &
+      - name: Set SSH password  
+        run: |  
+          echo "runner:MySecurePass123!" | sudo chpasswd  
 
-    - name: Start tmate SSH
-      uses: mxschmitt/action-tmate@v3
-      with:
-        wait-for-ssh: true
+      - name: Restore v4panel Backup from Filebase  
+        run: |  
+          mkdir -p v4panel  
+          cd v4panel  
+          aws --endpoint-url=https://s3.filebase.com s3 cp s3://$FILEBASE_BUCKET/panelbackup.zip panelbackup.zip || exit 0  
+          unzip -o panelbackup.zip || echo "No backup found"
 
-    - name: Keep Alive
-      run: |
-        echo "Keeping job alive for 6 hours..."
-        sleep 21600  # max GitHub Actions runtime
+      - name: Start v4panel with PM2  
+        run: |  
+          cd v4panel  
+          pm2 start index.js --name "v4panel" || pm2 restart v4panel
+          pm2 save
+
+      - name: Start tmate SSH + Backup Loop  
+        run: |  
+          chmod +x .github/scripts/panel_ssh_backup_loop.sh  
+          bash .github/scripts/ssh_backup_loop.sh

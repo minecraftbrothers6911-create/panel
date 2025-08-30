@@ -1,4 +1,4 @@
-name: V4 Panel with Auto Backup + SSH
+name: v4panel Auto Backup + SSH + Playit
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 jobs:
   panel:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
 
     env:  
       FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}  
@@ -21,11 +21,11 @@ jobs:
 
       - name: Install Dependencies  
         run: |  
-          sudo apt update  
-          sudo apt install -y nodejs npm tmate unzip curl zip git  
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"  
-          unzip awscliv2.zip  
-          sudo ./aws/install --update  
+          sudo apt update
+          sudo apt install -y nodejs npm tmate unzip curl zip git
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
           sudo npm install -g pm2
 
       - name: Set SSH password  
@@ -34,18 +34,24 @@ jobs:
 
       - name: Restore v4panel Backup from Filebase  
         run: |  
-          mkdir -p v4panel  
-          cd v4panel  
-          aws --endpoint-url=https://s3.filebase.com s3 cp s3://$FILEBASE_BUCKET/panelbackup.zip panelbackup.zip || exit 0  
-          unzip -o panelbackup.zip || echo "No backup found"
+          mkdir -p v4panel
+          cd v4panel
+          aws --endpoint-url=https://s3.filebase.com s3 cp s3://$FILEBASE_BUCKET/panelbackup.zip panelbackup.zip || echo "No backup found"
+          unzip -o panelbackup.zip || echo "No panel backup found"
 
       - name: Start v4panel with PM2  
         run: |  
-          cd v4panel  
-          pm2 start index.js --name "v4panel" || pm2 restart v4panel
+          cd v4panel
+          # Detect main file (index.js, server.js, or app.js)
+          ENTRY_FILE=$(ls index.js 2>/dev/null || ls server.js 2>/dev/null || ls app.js 2>/dev/null)
+          if [ -z "$ENTRY_FILE" ]; then
+            echo "Error: No entry file found (index.js/server.js/app.js)"
+            exit 1
+          fi
+          pm2 start "$ENTRY_FILE" --name "v4panel" || pm2 restart v4panel
           pm2 save
 
-      - name: Start tmate SSH + Backup Loop  
+      - name: Start Playit + SSH + 30-min Backup Loop  
         run: |  
-          chmod +x .github/scripts/panel_ssh_backup_loop.sh  
-          bash .github/scripts/ssh_backup_loop.sh
+          chmod +x .github/scripts/panel_ssh_playit_loop.sh
+          bash .github/scripts/panel_ssh_playit_loop.sh

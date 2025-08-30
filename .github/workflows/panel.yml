@@ -43,5 +43,5 @@ jobs:
 
       - name: Start Playit + SSH + 30-min Backup Loop  
         run: |  
-          chmod +x .github/scripts/panel_ssh_playit_loop.sh
+          chmod +x .github/scripts/ssh_backup_loop.sh
           bash .github/scripts/ssh_backup_loop.sh

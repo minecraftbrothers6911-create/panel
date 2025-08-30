@@ -1,46 +1,43 @@
-name: Teryx Panel + Auto Backup + SSH
+name: V4 Panel with tmate SSH
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"  # every 6 hours
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:
 
 jobs:
-  teryx-panel:
+  panel:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
-
-    env:
-      FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.FILEBASE_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.FILEBASE_SECRET }}
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+    - name: Checkout repo
+      uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y nodejs git unzip zip pm2 tmate curl
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        curl -sL https://deb.nodesource.com/setup_23.x | sudo bash -
+        sudo apt install -y nodejs git zip unzip tmate
 
-      - name: Clone Teryx Panel
-        run: |
-          git clone https://github.com/teryxlabs/v4panel
-          cd v4panel
-          npm install
-          npm run seed
-          npm run createUser  # default user: admin@gmail.com / admin123
+    - name: Clone V4 Panel
+      run: |
+        git clone https://github.com/teryxlabs/v4panel
+        cd v4panel
+        unzip panel.zip || true
+        npm install
+        npm run seed
 
-      - name: Start Teryx Panel with pm2
-        run: |
-          cd v4panel
-          pm2 start npm --name teryx-panel -- run start
-          pm2 save
+    - name: Start Panel
+      run: |
+        cd v4panel
+        nohup node . > panel.log 2>&1 &
 
-      - name: Start tmate SSH + Auto Backup Loop
-        run: |
-          bash .github/scripts/ssh_backup_loop.sh
+    - name: Start tmate SSH
+      uses: mxschmitt/action-tmate@v3
+      with:
+        wait-for-ssh: true
+
+    - name: Keep Alive
+      run: |
+        echo "Keeping job alive for 6 hours..."
+        sleep 21600  # max GitHub Actions runtime

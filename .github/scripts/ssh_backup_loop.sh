@@ -8,7 +8,8 @@ git config --global user.name "Auto Bot"
 git config --global user.email "auto@bot.com"
 mkdir -p links
 git fetch origin main
-git reset --hard origin/main
+git checkout main
+git pull origin main
 
 echo "------------------------------"
 echo "Ensure Playit agent exists"
@@ -37,7 +38,7 @@ echo "Start Playit agent"
 echo "------------------------------"
 pkill -f playit-linux-amd64 || true
 nohup $AGENT_BIN > playit.log 2>&1 &
-sleep 15
+sleep 20
 
 echo "------------------------------"
 echo "Background loop: Refresh tmate SSH every 15 minutes"
@@ -47,19 +48,18 @@ while true; do
   pkill tmate || true
   rm -f /tmp/tmate.sock
   tmate -S /tmp/tmate.sock new-session -d
-  tmate -S /tmp/tmate.sock wait tmate-ready 30 || true
+  tmate -S /tmp/tmate.sock wait tmate-ready || true
 
   TMATE_SSH=""
   while [ -z "$TMATE_SSH" ]; do
-    sleep 2
+    sleep 3
     TMATE_SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' || true)
   done
 
   echo "$TMATE_SSH" > links/ssh.txt
   echo "[INFO] Refreshed SSH: $TMATE_SSH"
 
-  git fetch origin main
-  git reset --hard origin/main
+  git pull origin main
   git add links/ssh.txt
   git commit -m "Updated SSH link $(date -u)" || true
   git push origin main || true
@@ -89,6 +89,10 @@ while true; do
 
   if [ -f ~/.config/playit_gg/playit.toml ]; then
     aws --endpoint-url=https://s3.filebase.com s3 cp ~/.config/playit_gg/playit.toml s3://$FILEBASE_BUCKET/playit.toml || echo "[Playit] Backup failed"
+  fi
+
+  if [ -f links/playit_claim.txt ]; then
+    aws --endpoint-url=https://s3.filebase.com s3 cp links/playit_claim.txt s3://$FILEBASE_BUCKET/playit_claim.txt || echo "[Playit] Claim link backup failed"
   fi
 
   echo "[INFO] Sleeping for 30 minutes..."

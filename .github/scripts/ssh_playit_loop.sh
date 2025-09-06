@@ -72,33 +72,34 @@ echo "------------------------------"
 echo "Full panel backup every 30 minutes"
 echo "------------------------------"
 (
+mkdir -p panel
 while true; do
   echo "[Backup] Starting panel backup at $(date -u)"
 
-  if [ -d panel ]; then
-    cd panel
-    rm -f ../panelbackup.zip
-    zip -r ../panelbackup.zip . >/dev/null
-    cd ..
-
-    echo "[Backup] Uploading to Filebase..."
-    n=0
-    until [ $n -ge 3 ]; do
-      aws --endpoint-url=https://s3.filebase.com s3 cp panelbackup.zip s3://$FILEBASE_BUCKET/panelbackup.zip && break
-      sleep 30
-      n=$((n+1))
-    done
-    echo "[Backup] Panel backup done ✅"
-  else
-    echo "[Backup] No panel directory found, skipping"
+  # Add dummy if empty
+  if [ -z "$(ls -A panel)" ]; then
+    echo "Dummy file" > panel/dummy.txt
   fi
 
+  BACKUP_NAME="panelbackup-$(date +%Y%m%d%H%M).zip"
+  zip -r "$BACKUP_NAME" panel >/dev/null 2>&1
+
+  echo "[Backup] Uploading $BACKUP_NAME to Filebase..."
+  n=0
+  until [ $n -ge 3 ]; do
+    aws --endpoint-url=https://s3.filebase.com s3 cp "$BACKUP_NAME" s3://$FILEBASE_BUCKET/$BACKUP_NAME && break
+    echo "[Backup] Upload attempt $((n+1)) failed, retrying..."
+    sleep 30
+    n=$((n+1))
+  done
+  echo "[Backup] Panel backup done ✅"
+
   echo "[INFO] Sleeping 30 minutes..."
-  sleep 1800  # 30 minutes
+  sleep 1800
 done
 ) &
 
-echo "[INFO] Script setup complete. Playit + 30min backup + tmate loop running in background."
+echo "[INFO] Panel VPS setup complete. Playit + 30min backup + tmate loop running in background."
 
 # Keep script running
 tail -f /dev/null

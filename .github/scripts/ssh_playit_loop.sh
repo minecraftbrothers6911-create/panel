@@ -81,7 +81,7 @@ while true; do
     echo "Dummy file" > panel/dummy.txt
   fi
 
-  BACKUP_NAME="panelbackup-$(date +%Y%m%d%H%M).zip"
+  BACKUP_NAME="panelbackup.zip"
   zip -r "$BACKUP_NAME" panel >/dev/null 2>&1
 
   echo "[Backup] Uploading $BACKUP_NAME to Filebase..."
